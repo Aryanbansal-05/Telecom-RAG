@@ -115,6 +115,6 @@ python RAG-pipeline/retriever.py     # test retrieval against the index
 
 ## Contributors
 
-- Aryan Bansal
 - Nancy
+- Aryan Bansal
 
