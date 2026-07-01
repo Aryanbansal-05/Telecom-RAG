@@ -23,7 +23,6 @@ from anomaly_detector import (                  # noqa: E402
     anomaly_to_query,
 )
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Pre-load both models once at startup, so the first real request from
@@ -36,6 +35,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Telecom RAN RAG Assistant", lifespan=lifespan)
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ---------- Request/response models ----------

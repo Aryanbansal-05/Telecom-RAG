@@ -61,7 +61,6 @@ def retrieve_chunks(query: str, k: int = 5) -> list:
         })
 
     return results
-#vchgtjgjgj
 
 if __name__ == "__main__":
     test_query = "What is the handover procedure in 5G NR?"
