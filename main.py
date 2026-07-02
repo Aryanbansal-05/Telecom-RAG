@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -14,8 +15,8 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "RAG-pi
 
 from generator import answer_question          # noqa: E402
 from rca import explain_anomaly                 # noqa: E402
-from llm_setup import load_llm                  # noqa: E402
-from retriever import retrieve_chunks           # noqa: E402
+from llm_setup import load_llm, get_llm_info   # noqa: E402
+from retriever import retrieve_chunks, get_index_stats  # noqa: E402
 from anomaly_detector import (                  # noqa: E402
     load_sample_csvs,
     detect_anomalies,
@@ -27,6 +28,8 @@ from anomaly_detector import (                  # noqa: E402
 async def lifespan(app: FastAPI):
     # Pre-load both models once at startup, so the first real request from
     # a user/demo isn't the one that eats the load time.
+    global _start_time
+    _start_time = time.time()
     print("Pre-loading models at startup...")
     retrieve_chunks("warmup", k=1)  # triggers embedding model + FAISS index load
     load_llm()
@@ -34,7 +37,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Telecom RAN RAG Assistant", lifespan=lifespan)
+app = FastAPI(title="Telecom RAN RAG Assistant", version="1.0.0", lifespan=lifespan)
+
+# Track startup time for uptime calculation
+_start_time: float = time.time()
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -79,9 +85,23 @@ class AnomalyItem(BaseModel):
 
 # ---------- Endpoints ----------
 
+# ── Data directory (for folder listing) ──────────────────────────────────
+_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "raw")
+
+APP_VERSION = "1.0.0"
+
+
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "Telecom RAN RAG Assistant API -- see /docs"}
+    llm  = get_llm_info()
+    idx  = get_index_stats()
+    models_loaded = llm["llm_loaded"] and idx["embedding_loaded"] and idx["index_loaded"]
+    return {
+        "status": "ok",
+        "version": APP_VERSION,
+        "models_loaded": models_loaded,
+        "message": "Telecom RAN RAG Assistant API -- see /docs",
+    }
 
 
 @app.post("/ask", response_model=AnswerResponse)
@@ -92,6 +112,58 @@ def ask(request: QuestionRequest):
         return AnswerResponse(answer=result["answer"], sources=result["sources"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats")
+def get_stats():
+    """Live system statistics: models, knowledge base, uptime."""
+    llm = get_llm_info()
+    idx = get_index_stats()
+    uptime_s = int(time.time() - _start_time)
+    return {
+        "version": APP_VERSION,
+        "uptime_seconds": uptime_s,
+        "uptime_human": _fmt_uptime(uptime_s),
+        "models": {
+            "llm_name":        llm["model_name"],
+            "llm_file":        llm["model_file"],
+            "llm_quantization":llm["quantization"],
+            "llm_n_ctx":       llm["n_ctx"],
+            "llm_loaded":      llm["llm_loaded"],
+            "embedding_model": idx["embedding_model"],
+            "embedding_loaded":idx["embedding_loaded"],
+            "index_loaded":    idx["index_loaded"],
+        },
+        "knowledge_base": {
+            "name":          "TeleQnA",
+            "faiss_vectors": idx["vectors"],
+            "documents":     idx["documents"],
+            "index_type":    "FAISS / L2",
+        },
+    }
+
+
+def _fmt_uptime(seconds: int) -> str:
+    h, rem = divmod(seconds, 3600)
+    m, s   = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+@app.get("/folders")
+def list_folders():
+    """List available telemetry data folders for anomaly scanning."""
+    try:
+        entries = [
+            d for d in os.listdir(_DATA_DIR)
+            if os.path.isdir(os.path.join(_DATA_DIR, d)) and not d.startswith(".")
+        ]
+        return {"folders": sorted(entries)}
+    except Exception:
+        return {"folders": ["slice_mixed", "slice_traffic"]}  # safe fallback
 
 
 @app.get("/anomalies", response_model=List[AnomalyItem])

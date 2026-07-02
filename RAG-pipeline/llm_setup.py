@@ -32,6 +32,19 @@ def load_llm():
     return _llm
 
 
+def get_llm_info() -> dict:
+    """Return live info about the LLM. Safe to call before load."""
+    return {
+        "model_repo": MODEL_REPO,
+        "model_file": MODEL_FILE,
+        "model_name": "Qwen3-4B-Instruct",  # human-readable short name
+        "quantization": "Q4_K_M (GGUF)",
+        "n_ctx": 4096,
+        "n_threads": os.cpu_count(),
+        "llm_loaded": _llm is not None,
+    }
+
+
 def generate(prompt, max_tokens=400, temperature=0.3):
     """
     Uses llama-cpp-python's chat completion, which reads the chat template

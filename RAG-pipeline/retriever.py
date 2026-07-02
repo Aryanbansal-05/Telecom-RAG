@@ -62,6 +62,18 @@ def retrieve_chunks(query: str, k: int = 5) -> list:
 
     return results
 
+
+def get_index_stats() -> dict:
+    """Return live stats about the FAISS index and metadata. Safe to call before load."""
+    return {
+        "embedding_model": EMBEDDING_MODEL,
+        "index_path": INDEX_PATH,
+        "vectors": int(_index.ntotal) if _index is not None else 0,
+        "documents": len(_metadata) if _metadata is not None else 0,
+        "embedding_loaded": _model is not None,
+        "index_loaded": _index is not None,
+    }
+
 if __name__ == "__main__":
     test_query = "What is the handover procedure in 5G NR?"
     results = retrieve_chunks(test_query, k=3)
